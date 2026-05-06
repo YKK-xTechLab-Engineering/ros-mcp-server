@@ -15,11 +15,11 @@ authors = [
 
 dependencies = [
     "fastmcp>=2.11.3",
-    "jsonschema>=4.25.1",
+    "jsonschema>=4.23.0",
     "mcp[cli]>=1.13.0",
-    "opencv-python>=4.11.0.86",
-    "pillow>=11.3.0",
-    "websocket-client>=1.8.0",
+    "opencv-python>=4.8.0",   # Relaxed for conda/ROS compatibility
+    "pillow>=9.0.0",          # Relaxed for conda/ROS compatibility
+    "websocket-client>=1.5.0",
 ]
 
 [project.optional-dependencies]
@@ -79,3 +79,77 @@ markers = [
 # MCP Registry validation - required for PyPI package verification
 [tool.mcp]
 name = "io.github.robotmcp/ros-mcp-server"
+
+# ==================== Pixi Configuration ====================
+
+[tool.pixi.workspace]
+name = "ros-mcp-server"
+channels = ["https://prefix.dev/robostack-humble", "conda-forge"]
+platforms = ["linux-64"]
+
+# Conda dependencies (installed alongside PyPI deps)
+[tool.pixi.dependencies]
+python = ">=3.10,<3.12"  # RoboStack Humble supports up to 3.11
+tmux = "*"  # For running server in detached sessions
+
+# Optional ROS dependencies for local testing
+[tool.pixi.feature.ros.dependencies]
+ros-humble-desktop = "*"
+ros-humble-rosbridge-suite = "*"
+# Use conda opencv to avoid conflicts with ROS's opencv
+py-opencv = "*"
+pillow = ">=10.0.0"
+
+# Development tools as conda packages (faster install)
+[tool.pixi.feature.dev.dependencies]
+ruff = "*"
+pytest = "*"
+
+# ==================== Tasks ====================
+[tool.pixi.tasks]
+# Run the MCP server in foreground (for debugging)
+serve-fg = "python -m ros_mcp.main"
+serve-http-fg = "python -m ros_mcp.main --transport http --host 0.0.0.0 --port 9000"
+serve-stream-fg = "python -m ros_mcp.main --transport streamable-http --host 0.0.0.0 --port 9000"
+
+# Run the MCP server in detached tmux session
+serve = "tmux new-session -d -s mcp 'python -m ros_mcp.main'"
+serve-http = "tmux new-session -d -s mcp 'python -m ros_mcp.main --transport http --host 0.0.0.0 --port 9000'"
+serve-stream = "tmux new-session -d -s mcp 'python -m ros_mcp.main --transport streamable-http --host 0.0.0.0 --port 9000'"
+
+# MCP session management
+stop = "tmux kill-session -t mcp"
+attach = "tmux attach-session -t mcp"
+logs = "tmux capture-pane -t mcp -p"
+
+# Development tasks
+lint = "ruff check ros_mcp tests"
+lint-fix = "ruff check --fix ros_mcp tests"
+format = "ruff format ros_mcp tests"
+format-check = "ruff format --check ros_mcp tests"
+typecheck = "python -m py_compile ros_mcp/main.py"
+
+# Testing
+test = "pytest tests/ -v"
+test-unit = "pytest tests/ -v -m 'not integration and not installation'"
+
+# Combined checks
+check = { depends-on = ["lint", "format-check"] }
+
+# ROS-related tasks (available in ros environment)
+[tool.pixi.feature.ros.tasks]
+rosbridge = "ros2 launch rosbridge_server rosbridge_websocket_launch.xml"
+ros-topics = "ros2 topic list"
+ros-services = "ros2 service list"
+ros-nodes = "ros2 node list"
+
+# ==================== Environments ====================
+[tool.pixi.environments]
+# Default: just the MCP server (no ROS - connects via websocket)
+default = { features = [], solve-group = "default" }
+# Development: MCP server + dev tools
+dev = { features = ["dev"], solve-group = "default" }
+# ROS: Full ROS 2 Humble environment for local testing
+ros = { features = ["ros"], solve-group = "ros" }
+# ROS + dev tools
+ros-dev = { features = ["ros", "dev"], solve-group = "ros" }
